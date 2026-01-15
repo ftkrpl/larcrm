@@ -20,9 +20,20 @@ class VisitResource extends Resource
     {
         return $form
             ->components([
-                \Filament\Forms\Components\TextInput::make('customer_name')->required(),
+                \Filament\Forms\Components\TextInput::make('kodecust')
+                    ->label('Kode Cust'),
+                \Filament\Forms\Components\TextInput::make('namacust')
+                    ->label('Nama Cust')
+                    ->required(),
+                \Filament\Forms\Components\TextInput::make('kodeacum')
+                    ->label('Kode Acumatica') // Judul yang muncul di atas kotak input
+                    ->placeholder('Contoh: C0101398'), // Opsional: Teks bantuan di dalam kotak
+                \Filament\Forms\Components\TextInput::make('namapic')
+                    ->label('Nama PIC'),
+                \Filament\Forms\Components\TextInput::make('jabatanpic')
+                    ->label('Jabatan PIC'),
                 \Filament\Forms\Components\DatePicker::make('visit_date')->required(),
-                \Filament\Forms\Components\Textarea::make('notes')->required(),
+                \Filament\Forms\Components\Textarea::make('notes')->columnSpanFull(),
             ]);
     }
 
@@ -84,6 +95,13 @@ class VisitResource extends Resource
             'index' => Pages\ListVisits::route('/'),
             'create' => Pages\CreateVisit::route('/create'),
             'edit' => Pages\EditVisit::route('/{record}/edit'),
+        ];
+    }
+    public static function getRelations(): array
+    {
+        return [
+            // Tambahkan "VisitResource" di tengah-tengah namespace-nya
+            \App\Filament\Resources\VisitResource\RelationManagers\ActivitiesRelationManager::class,
         ];
     }
 }

@@ -19,4 +19,9 @@ class Visit extends Model
         'status',
         'visit_date',
         'notes'];
+
+    public function activities()
+    {
+        return $this->hasMany(VisitActivity::class);
+    }
 }
