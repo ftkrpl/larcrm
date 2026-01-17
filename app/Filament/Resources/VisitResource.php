@@ -191,16 +191,19 @@ public static function infolist(\Filament\Schemas\Schema $infolist): \Filament\S
                             ->required(),
                         \Filament\Forms\Components\Textarea::make('result')->required(),
                     ])
-                    ->action(function ($record, array $data) {
+                    ->action(function ($record, array $data, $livewire) {
                         $record->activities()->create($data);
                         
                         \Filament\Notifications\Notification::make()
                             ->title('Aktivitas Berhasil Disimpan')
                             ->success()
                             ->send();
-                        // TAMBAHKAN INI: Beritahu Livewire untuk refresh komponen di halaman tersebut
-                        return redirect(request()->header('Referer'));
-                    }),
+                        // 3. Eksekusi Refresh
+                        $livewire->js('window.location.reload()');
+                    })
+                    // --- INI PENUTUP AIBNYA ---
+                    ->color('primary')
+                    ->button(),
             ]),
         ]);
 }  
