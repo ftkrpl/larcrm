@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\Visits\Tables;
+namespace App\Filament\Resources\VisitResource\Tables; // Samakan dengan nama foldernya
 
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;

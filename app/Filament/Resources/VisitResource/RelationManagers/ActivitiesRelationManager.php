@@ -3,10 +3,12 @@
 namespace App\Filament\Resources\VisitResource\RelationManagers;
 
 use App\Filament\Resources\VisitResource;
-use Filament\Actions\CreateAction;
+
+use Filament\Tables\Actions\CreateAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\Layout\Stack; // Pastikan import ini ada di atas
+use Filament\Schemas\Schema; // ALAMAT BARU SESUAI ERROR
 
 class ActivitiesRelationManager extends RelationManager
 {
@@ -16,9 +18,10 @@ class ActivitiesRelationManager extends RelationManager
     protected static ?string $relatedResource = VisitResource::class;
 
     // Gunakan \Filament\Schemas\Schema sesuai permintaan error-nya
-    public function form(\Filament\Schemas\Schema $form): \Filament\Schemas\Schema
+    //public function form(\Filament\Schemas\Schema $form): \Filament\Schemas\Schema
+    public function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->components([ // Gunakan components() bukan schema() jika pakai Schema class
                 \Filament\Forms\Components\Select::make('jenis')
                     ->options([
@@ -56,21 +59,48 @@ class ActivitiesRelationManager extends RelationManager
                 \Filament\Tables\Columns\TextColumn::make('result')->label('Result'),
                 ])
             ])
-            ->contentGrid([
-                'default' => 1,
-                'md' => 2,
-            ])
+            //->contentGrid([
+            //    'default' => 1,
+            //    'md' => 2,
+            //])
             ->headerActions([
-                // GANTI DARI Tables\Actions\CreateAction MENJADI:
+                // WAJIB pakai Tables\Actions agar muncul di atas tabel relasi
                 \Filament\Actions\CreateAction::make()
-                    ->label('New Activity') // <-- Ganti caption tombol di sini
-                    ->icon('heroicon-m-plus-circle') // Opsional: tambah ikon biar makin cakep
-                    ->modalHeading('Buat Aktivitas Kunjungan'), // Judul di kotak popup-nya
+                    ->label('New Activity')
+                    ->icon('heroicon-m-plus-circle')
+                    ->modalHeading('Buat Aktivitas Kunjungan')
+                    ->model(\App\Models\Activity::class) 
+                    ->slideOver()
+                    ->visible(true), // PAKSA VISIBLE
             ])
             ->actions([
-                // GANTI SEMUA MENJADI:
-                \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make(),
+                \Filament\Actions\EditAction::make()->visible(true),
+                \Filament\Actions\DeleteAction::make()->visible(true),
             ]);
+    }
+
+    // --- KUNCI JAWABAN AGAR TOMBOL MUNCUL DI HALAMAN VIEW ---
+    
+    protected function canCreate(): bool
+    {
+        // Paksa agar selalu boleh membuat aktivitas baru di halaman apapun
+        return true;
+    }
+
+    public static function canViewForRecord(\Illuminate\Database\Eloquent\Model $ownerRecord, string $pageClass): bool
+    {
+        // Pastikan Relation Manager ini diizinkan tampil di halaman ViewRecord
+        return true;
+    }
+
+    // Tambahkan ini juga agar tombol "Edit" dan "Delete" muncul di halaman View
+    protected function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return true;
+    }
+
+    protected function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return true;
     }
 }

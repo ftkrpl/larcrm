@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\Visits\Schemas;
+namespace App\Filament\Resources\VisitResource\Schemas; // Pastikan 'VisitResource', bukan 'Visits'
 
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\TextInput;
