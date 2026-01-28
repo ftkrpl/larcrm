@@ -2,7 +2,7 @@
 
 require __DIR__ . '/vendor/autoload.php';
 
-$componentsToFind = ['Section', 'Group', 'TextInput', 'Grid', 'Accordion', 'Fieldset','Textarea','Placeholder','TextEntry'];
+$componentsToFind = ['Section', 'Group', 'TextInput', 'Grid', 'Accordion', 'Fieldset','Textarea','Placeholder','TextEntry','Select'];
 $basePath = __DIR__ . '/vendor/filament';
 
 echo "=== HASIL PENCARIAN COMPONENT FILAMENT ===\n\n";

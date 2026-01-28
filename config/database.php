@@ -58,6 +58,19 @@ return [
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
+        'mysql_external' => [
+            'driver' => 'mysql',
+            'host' => env('DB_EXT_HOST', '127.0.0.1'),
+            'port' => env('DB_EXT_PORT', '3306'),
+            'database' => env('DB_EXT_DATABASE', 'forge'),
+            'username' => env('DB_EXT_USERNAME', 'forge'),
+            'password' => env('DB_EXT_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ],
 
         'mariadb' => [
             'driver' => 'mariadb',

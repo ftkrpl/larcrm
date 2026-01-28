@@ -2,103 +2,183 @@
 
 namespace App\Filament\Resources;
 
-
 use App\Models\Visit;
-use Filament\Resources\Resource;
 use App\Filament\Resources\VisitResource\Pages;
-use Filament\Tables\Columns\Layout\Stack; // Pastikan import ini ada di atas
-
-// DAFTAR USE HASIL SCAN (PASTI ADA)
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
-use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Grid;
-use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Infolist;
 use App\Filament\Resources\VisitResource\RelationManagers;
-
+use Filament\Resources\Resource;
+use Filament\Tables\Table;
+use Filament\Schemas\Schema;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\Layout\Stack;
+use Filament\Forms\Components\{TextInput, Textarea, DatePicker, Select, Placeholder};
+use Filament\Schemas\Components\{Section, Grid, Actions};
+use Filament\Actions\Action;
+use Filament\Schemas\Components\Utilities\Get;
 
 class VisitResource extends Resource
 {
     protected static ?string $model = Visit::class;
-
-    // Kita pakai tipe data yang sudah disetujui sebelumnya
-    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-clipboard-document-check';
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-clipboard-document-check'; //jika pakai ?string ternyata error
     protected static ?string $navigationLabel = 'Kunjungan Sales';
 
-    // KUNCI: Gunakan \Filament\Schemas\Schema sesuai pesan error-nya
-    public static function form(\Filament\Schemas\Schema $form): \Filament\Schemas\Schema
+    public static function form(Schema $form): Schema
     {
-        return $form
-            ->components([
-                \Filament\Forms\Components\TextInput::make('kodecust')
-                    ->label('Kode Cust'),
-                \Filament\Forms\Components\TextInput::make('namacust')
-                    ->label('Nama Cust')
-                    ->required(),
-                \Filament\Forms\Components\TextInput::make('kodeacum')
-                    ->label('Kode Acumatica') // Judul yang muncul di atas kotak input
-                    ->placeholder('Contoh: C0101398'), // Opsional: Teks bantuan di dalam kotak
-                \Filament\Forms\Components\TextInput::make('namapic')
-                    ->label('Nama PIC'),
-                \Filament\Forms\Components\TextInput::make('jabatanpic')
-                    ->label('Jabatan PIC'),
-                \Filament\Forms\Components\DatePicker::make('visit_date')->required(),
-                \Filament\Forms\Components\Textarea::make('notes')->columnSpanFull(),
-            ]);
+        return $form->components([
+            TextInput::make('kodesales')
+                ->label('Kode Sales')
+                ->default('SDA03') // ->default(fn () => auth()->user()->kode_sales_user)
+                ->disabled()
+                ->dehydrated(),
+            TextInput::make('kodecust')
+                ->label('Kode Cust')
+                ->reactive()
+                ->disabled(fn (Get $get) => filled($get('kodeacum')))
+                ->dehydrated()
+                ->extraAttributes(fn (Get $get) => [
+                    'class' => filled($get('kodeacum')) 
+                        ? 'bg-gray-200 dark:bg-gray-800 cursor-not-allowed rounded-lg' 
+                        : '',
+                    'style' => filled($get('kodeacum'))
+                        ? 'pointer-events: all !important;' // Memaksa mouse bisa berinteraksi untuk memicu kursor
+                        : '',
+                ])
+                ->live(),
+            
+            //TextInput::make('kodeacum')->label('Kode Acumatica')->placeholder('C0101398'),
+            Select::make('kodeacum')
+                ->label('Kode Acumatica')
+                    ->required()
+                    ->relationship('customer', 'customerid')
+                    //->relationship('customer')
+                    ->searchable()
+                    // 1. Saat Mengetik: Muncul ID - NAMA
+                    ->getSearchResultsUsing(fn (string $search): array => 
+                        \App\Models\Customer::where('customername', 'like', "%{$search}%")
+                            ->orWhere('customerid', 'like', "%{$search}%")
+                            ->limit(10)
+                            ->get()
+                            ->mapWithKeys(fn ($item) => [
+                                $item->customerid => "{$item->customerid} - {$item->customername}"
+                            ])
+                            ->toArray()
+                    )
+                    ->getOptionLabelUsing(fn ($value) => (string) $value)
+
+                    
+                    ->reactive() 
+                    ->afterStateUpdated(function ($state, $set) {
+                        $customer = \App\Models\Customer::where('customerid', $state)->first();
+                        if ($customer) {
+                            $set('namacust', $customer->customername); 
+                            $set('namapic', $customer->admar); 
+                        }
+                    })
+                    ->nullable()
+                    ->live(),
+            //TextInput::make('namacust')->label('Nama Cust')->required(),
+            TextInput::make('namacust')
+                ->label('Nama Customer')
+                ->disabled(fn (Get $get) => filled($get('kodeacum')) || filled($get('kodecust')))
+                ->required(fn (Get $get) => blank($get('kodeacum')) && blank($get('kodecust')))
+                ->extraInputAttributes(fn (Get $get) => [
+                    'style' => filled($get('kodeacum')) 
+                    ? 'color: #1e40af; font-weight: bold; font-style: italic;' // Biru Tua, Bold, Italic
+                    : 'color: black;',
+                ])
+                ->dehydrated()
+                // Tambahkan ini agar tidak monoton:
+                ->placeholder('Ketik nama jika customer baru...')
+                ->hint(fn (Get $get) => filled($get('kodeacum')) ? 'Data dari Master' : null)
+                ->hintIcon(fn (Get $get) => filled($get('kodeacum')) ? 'heroicon-m-check-badge' : null)
+                ->hintColor('success'), // Warna hijau biar kelihatan "Resmi"
+            TextInput::make('namapic')->label('Nama PIC'),
+            TextInput::make('jabatanpic')->label('Jabatan PIC'),
+            DatePicker::make('visit_date')
+                ->required()
+                ->displayFormat('d-m-Y')
+                ->default(now()->format('d-m-Y')),
+            Textarea::make('notes')->columnSpanFull(),
+        ]);
     }
 
-    public static function table(\Filament\Tables\Table $table): \Filament\Tables\Table
+    public static function table(Table $table): Table
     {
         return $table
             ->columns([
-                Stack::make([ // <--- SISIPKAN DI SINI
-                    \Filament\Tables\Columns\TextColumn::make('namacust')
-                        ->label('Nama Cust')
+                Stack::make([
+                    TextColumn::make('namacust')
                         ->weight('bold')
-                        ->size('lg') // Perbesar dikit buat judul card
+                        ->size('lg')
                         ->searchable(),
-                    
-                    \Filament\Tables\Columns\TextColumn::make('kodesales')
-                        ->label('Kode Sales')
+                    TextColumn::make('kodesales')
                         ->formatStateUsing(fn ($state) => "Sales: " . $state)
                         ->color('gray'),
-
-                    \Filament\Tables\Columns\TextColumn::make('namapic')
+                    TextColumn::make('namapic')
                         ->label('Nama PIC')
-                        ->formatStateUsing(fn ($state, $record) => "PIC: " . $state . " (" . $record->jabatanpic . ")")
+                        ->formatStateUsing(function ($state, $r) {
+                            $nama = $state ?? 'Tanpa Nama';
+                            $jabatanText = $r?->jabatanpic ?? '';
+                            $jabatan = ($jabatanText !== '') ? " ({$jabatanText})" : "";
+                            return "PIC: " . $nama . $jabatan;;
+                        })
                         ->icon('heroicon-m-user'),
-
-                    \Filament\Tables\Columns\TextColumn::make('visit_date')
-                        ->label('Visit Date')
+                    TextColumn::make('visit_date')
                         ->date('d M Y')
                         ->color('primary')
                         ->icon('heroicon-m-calendar'),
-                    
-                    \Filament\Tables\Columns\TextColumn::make('status')
-                        ->label('Status Kunjungan')
-                        ->badge()
-                        ->wrap() // <--- Tambahkan ini
-                        ->separator(',') // Memecah "A,B,C" menjadi badge terpisah
-                        ->color('success') // Warna hijau agar segar dilihat bos
-                        ->size('xs'), // Ukuran kecil agar hemat ruang di Card
                 ]),
             ])
-            ->contentGrid([
-                'default' => 1,
-                'md' => 2,
-                'xl' => 3,
-            ])
-            // Opsional: Hilangkan garis antar baris agar lebih seperti Card
-            ->striped(false)
+            ->contentGrid(['default' => 1, 'md' => 2, 'xl' => 3])
             ->actions([
-                // ALAMAT BARU: Filament\Actions\EditAction (Tanpa kata Tables)
                 \Filament\Actions\ViewAction::make(),
-                \Filament\Actions\EditAction::make(), 
-            ])
-            ->bulkActions([
-                \Filament\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\EditAction::make(),
             ]);
+    }
+
+    public static function infolist(Schema $infolist): Schema
+    {
+        return $infolist->components([
+            Section::make(fn ($record) => "PIC: " . ($record->namapic ?? 'Tanpa Nama'))
+                ->description('Klik untuk detail lebih lanjut')
+                ->schema([
+                    Grid::make(2)->schema([
+                        Placeholder::make('kodesales')
+                            ->content(fn ($r) => $r->kodesales ?? '-'),
+                        Placeholder::make('kodecust')
+                            ->content(fn ($r) => $r->kodecust ?? '-'),
+                        Placeholder::make('notes')
+                            ->content(fn ($r) => $r->notes ?? '-')
+                            ->columnSpanFull(),
+                    ]),
+                ])
+                ->collapsible()
+                ->collapsed(),
+
+            Actions::make([
+                Action::make('add_activity')
+                    ->label('Tambah Aktivitas Baru')
+                    ->icon('heroicon-m-plus-circle')
+                    ->color('primary')
+                    ->button()
+                    ->extraAttributes(['class' => 'my-4'])
+                    ->slideOver()
+                    ->form([
+                        \Filament\Forms\Components\Select::make('jenis')
+                            ->options(['Regular Visit' => 'Regular Visit', 'New Customer' => 'New Customer'])
+                            ->required(),
+                        TextInput::make('kode_barang'),
+                        \Filament\Forms\Components\Select::make('status')
+                            ->options(['Deal' => 'Deal', 'On Progress' => 'On Progress'])
+                            ->required(),
+                        Textarea::make('result')->required(),
+                    ])
+                    ->action(function ($record, array $data, $livewire) {
+                        $record->activities()->create($data);
+                        \Filament\Notifications\Notification::make()->title('Sukses')->success()->send();
+                        $livewire->js('window.location.reload()');
+                    }),
+            ]),
+        ]);
     }
 
     public static function getPages(): array
@@ -106,105 +186,13 @@ class VisitResource extends Resource
         return [
             'index' => Pages\ListVisits::route('/'),
             'create' => Pages\CreateVisit::route('/create'),
-            'view' => Pages\ViewVisit::route('/{record}'), // TAMBAHKAN INI
+            'view' => Pages\ViewVisit::route('/{record}'),
             'edit' => Pages\EditVisit::route('/{record}/edit'),
         ];
     }
+
     public static function getRelations(): array
     {
-        return [
-            // Pastikan alamatnya lengkap dan folder RelationManagers ada 's'-nya
-            RelationManagers\ActivitiesRelationManager::class,
-        ];
+        return [RelationManagers\ActivitiesRelationManager::class];
     }
-    /*
-    public static function infolist(\Filament\Schemas\Schema $infolist): \Filament\Schemas\Schema
-    {
-        return $infolist
-            ->components([
-                \Filament\Forms\Components\Placeholder::make('namacust')
-                    ->label('Customer')
-                    ->content(fn ($record): string => $record->namacust ?? '-'),
-                
-                \Filament\Forms\Components\Placeholder::make('visit_date')
-                    ->label('Tanggal Kunjungan')
-                    ->content(fn ($record): string => $record->visit_date ?? '-'),
-
-                \Filament\Forms\Components\Placeholder::make('notes')
-                    ->label('Catatan')
-                    ->content(fn ($record): string => $record->notes ?? '-'),
-            ]);
-    }
-    */
-public static function infolist(\Filament\Schemas\Schema $infolist): \Filament\Schemas\Schema
-{
-    return $infolist
-        ->components([
-            // 1. SECTION DETAIL PIC (Readonly & Collapsible)
-            \Filament\Schemas\Components\Section::make(function ($record) {
-                $pic = $record->namapic ?? 'Tanpa Nama';
-                $jabatan = $record->jabatanpic ? " ({$record->jabatanpic})" : "";
-                return "PIC: " . $pic . $jabatan;
-            })
-            ->description('Klik untuk detail lebih lanjut')
-            ->schema([
-                \Filament\Schemas\Components\Grid::make(2)
-                    ->schema([
-                        \Filament\Forms\Components\Placeholder::make('kodesales')
-                            ->label('Kode Sales')
-                            ->content(fn ($record) => $record->kodesales ?? '-'),
-                        
-                        \Filament\Forms\Components\Placeholder::make('kodecust')
-                            ->label('Kode Cust')
-                            ->content(fn ($record) => $record->kodecust ?? '-'),
-                        
-                        \Filament\Forms\Components\Placeholder::make('notes')
-                            ->label('Catatan')
-                            ->content(fn ($record) => $record->notes ?? '-')
-                            ->columnSpanFull(),
-                    ]),
-            ])
-            ->collapsible()
-            ->collapsed(), // Biarkan detail ini tertutup secara default
-
-            // 2. TOMBOL AKSI (DI LUAR SECTION - SELALU MUNCUL)
-            \Filament\Schemas\Components\Actions::make([
-                \Filament\Actions\Action::make('add_activity')
-                    ->label('Tambah Aktivitas Baru')
-                    ->icon('heroicon-m-plus-circle')
-                    ->color('primary')
-                    ->button() // Membuatnya terlihat seperti tombol solid
-                    ->extraAttributes(['class' => 'my-4']) // Memberi jarak atas-bawah
-                    ->slideOver()
-                    ->form([
-                        \Filament\Forms\Components\Select::make('jenis')
-                            ->options([
-                                'Regular Visit' => 'Regular Visit',
-                                'New Customer' => 'New Customer',
-                                'New Product Development' => 'New Product Development',
-                                'Existing Product Offering' => 'Existing Product Offering',
-                                'Competitor Info' => 'Competitor Info',
-                            ])->required(),
-                        \Filament\Forms\Components\TextInput::make('kode_barang'),
-                        \Filament\Forms\Components\Select::make('status')
-                            ->options(['Failed' => 'Failed', 'Deal' => 'Deal', 'On Progress' => 'On Progress'])
-                            ->required(),
-                        \Filament\Forms\Components\Textarea::make('result')->required(),
-                    ])
-                    ->action(function ($record, array $data, $livewire) {
-                        $record->activities()->create($data);
-                        
-                        \Filament\Notifications\Notification::make()
-                            ->title('Aktivitas Berhasil Disimpan')
-                            ->success()
-                            ->send();
-                        // 3. Eksekusi Refresh
-                        $livewire->js('window.location.reload()');
-                    })
-                    // --- INI PENUTUP AIBNYA ---
-                    ->color('primary')
-                    ->button(),
-            ]),
-        ]);
-}  
 }

@@ -24,4 +24,10 @@ class Visit extends Model
     {
         return $this->hasMany(VisitActivity::class);
     }
+
+    public function customer()
+    {
+        // Asumsi di tabel visits ada kolom 'customerid' yang merujuk ke 'customerid' di tabel customers
+        return $this->belongsTo(Customer::class, 'kodeacum', 'customerid');
+    }
 }
