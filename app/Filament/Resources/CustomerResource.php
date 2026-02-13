@@ -9,11 +9,13 @@ use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Schemas\Schema;
+use BackedEnum;
 
 class CustomerResource extends Resource
 {
-    protected static ?string $model = Customer::class;
-    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-users';
+    //protected static $model = Customer::class;
+    protected static ?string $model = \App\Models\Customer::class;
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationLabel = 'Master Customer';
 
     public static function table(Table $table): Table

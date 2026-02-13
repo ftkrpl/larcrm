@@ -1,0 +1,363 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Models\Visit;
+use App\Filament\Resources\VisitResource\Pages;
+use App\Filament\Resources\VisitResource\RelationManagers;
+use Filament\Resources\Resource;
+
+// --- URUSAN FORM & TABLE ---
+use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Components\{TextInput, Textarea, DatePicker, Select, Placeholder};
+use Filament\Tables\Table;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\Layout\Stack;
+use Filament\Actions\Action; // Untuk Header Action (Tombol Umum)
+
+// --- URUSAN INFOLIST / VIEW (PINTU UTAMA SCHEMAS) ---
+//use Filament\Schemas\Action as InfolistAction;
+//use Filament\Actions\Action as InfolistAction;
+use Filament\Schemas\Schema;
+use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\{Section, Grid};
+use Filament\Schemas\Components\Repeater;
+//use Filament\Schemas\Components\Actions\Action as InfolistAction; 
+// ^ Ini alias supaya tidak bentrok dengan Filament\Actions\Action di atas
+
+use Filament\Infolists\Components\RepeatableEntry;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\Actions as InfolistActions;
+use Filament\Infolists\Components\Actions\Action as InfolistAction;
+
+class VisitResource extends Resource
+{
+    protected static ?string $model = Visit::class;
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-clipboard-document-check'; //jika pakai ?string ternyata error
+    protected static ?string $navigationLabel = 'Kunjungan Sales';
+
+    //public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
+    {
+    // Gunakan variabel $schema (bukan $form) agar konsisten
+    return $schema
+        ->components([
+            TextInput::make('kodesales')
+                ->label('Kode Sales')
+                ->default('SDA03') // ->default(fn () => auth()->user()->kode_sales_user)
+                ->disabled()
+                ->dehydrated(),
+            Select::make('kodecust') // ganti sesuai field di database visit
+                ->label('Kode Cust (NOO)')
+                ->disabled(fn (Get $get) => filled($get('customerid')))
+                ->required()
+                ->relationship('customer', 'customerid')
+                ->searchable()
+                ->getSearchResultsUsing(fn (string $search): array => 
+                    \App\Models\Customer::where('source', 'NOO') // <-- Filter ganti ke NOO
+                        ->where(function ($query) use ($search) {
+                            $query->where('customername', 'like', "%{$search}%")
+                                  ->orWhere('customerid', 'like', "%{$search}%");
+                        })
+                        ->limit(10)
+                        ->get()
+                        ->mapWithKeys(fn ($item) => [
+                            $item->customerid => "{$item->kodecust} - {$item->customername}"
+                        ])
+                        ->toArray()
+                )
+                ->getOptionLabelUsing(fn ($value) => (string) $value)
+                ->reactive() 
+                ->afterStateUpdated(function ($state, $set) {
+                    $customer = \App\Models\Customer::where('customerid', $state)->first();
+                    if ($customer) {
+                        $set('namacust', $customer->customername); 
+                        $set('namapic', $customer->admar); 
+                    }
+                })
+                ->nullable()
+                ->live(),
+            //TextInput::make('kodeacum')->label('Kode Acumatica')->placeholder('C0101398'),
+            Select::make('kodeacum')
+                ->label('Kode Acumatica')
+                ->disabled(fn (Get $get) => filled($get('kodecust')))
+                    ->required()
+                    ->relationship('customer', 'customerid')
+                    //->relationship('customer')
+                    ->searchable()
+                    ->getSearchResultsUsing(fn (string $search): array => 
+                        \App\Models\Customer::where('source', 'Acumatica') // <-- Tambahkan Filter Ini
+                            ->where(function ($query) use ($search) {
+                                $query->where('customername', 'like', "%{$search}%")
+                                      ->orWhere('customerid', 'like', "%{$search}%");
+                            })
+                            ->limit(10)
+                            ->get()
+                            ->mapWithKeys(fn ($item) => [
+                                $item->customerid => "{$item->customerid} - {$item->customername}"
+                            ])
+                            ->toArray()
+                    )
+                    ->getOptionLabelUsing(fn ($value) => (string) $value)
+
+                    
+                    ->reactive() 
+                    ->afterStateUpdated(function ($state, $set) {
+                        $customer = \App\Models\Customer::where('customerid', $state)->first();
+                        if ($customer) {
+                            $set('namacust', $customer->customername); 
+                            $set('namapic', $customer->admar); 
+                        }
+                    })
+                    ->nullable()
+                    ->live(),
+            //TextInput::make('namacust')->label('Nama Cust')->required(),
+            TextInput::make('namacust')
+                ->label('Nama Customer')
+                ->disabled(fn (Get $get) => filled($get('kodeacum')) || filled($get('kodecust')))
+                ->required(fn (Get $get) => blank($get('kodeacum')) && blank($get('kodecust')))
+                ->extraInputAttributes(fn (Get $get) => [
+                    'style' => filled($get('kodeacum')) 
+                    ? 'color: #1e40af; font-weight: bold; font-style: italic;' // Biru Tua, Bold, Italic
+                    : 'color: black;',
+                ])
+                ->dehydrated()
+                // Tambahkan ini agar tidak monoton:
+                ->placeholder('Ketik nama jika customer baru...')
+                ->hint(fn (Get $get) => filled($get('kodeacum')) ? 'Data dari Master' : null)
+                ->hintIcon(fn (Get $get) => filled($get('kodeacum')) ? 'heroicon-m-check-badge' : null)
+                ->hintColor('success'), // Warna hijau biar kelihatan "Resmi"
+            TextInput::make('namapic')->label('Nama PIC'),
+            TextInput::make('jabatanpic')->label('Jabatan PIC'),
+            DatePicker::make('visit_date')
+                ->required()
+                ->displayFormat('d-m-Y')
+                ->default(now()->format('d-m-Y')),
+            Textarea::make('notes')->columnSpanFull(),
+        ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        // tampilan https://salesvisit.panganlestari.id/beranda/visits
+        return $table
+            ->columns([
+                Stack::make([
+                    TextColumn::make('namacust')
+                        ->weight('bold')
+                        ->size('lg')
+                        ->searchable(),
+                    TextColumn::make('kodesales')
+                        ->formatStateUsing(fn ($state) => "Sales: " . $state)
+                        ->color('gray'),
+                    TextColumn::make('namapic')
+                        ->label('Nama PIC')
+                        ->formatStateUsing(function ($state, $r) {
+                            $nama = $state ?? 'Tanpa Nama';
+                            $jabatanText = $r?->jabatanpic ?? '';
+                            $jabatan = ($jabatanText !== '') ? " ({$jabatanText})" : "";
+                            return "PIC: " . $nama . $jabatan;;
+                        })
+                        ->icon('heroicon-m-user'),
+                    TextColumn::make('visit_date')
+                        ->date('d M Y')
+                        ->color('primary')
+                        ->icon('heroicon-m-calendar'),
+                ]),
+            ])
+            ->contentGrid(['default' => 1, 'md' => 2, 'xl' => 3])
+            ->actions([
+                \Filament\Actions\ViewAction::make(),
+                \Filament\Actions\EditAction::make(),
+            ]);
+    }
+
+    // tampilan ketika visit di klik (untuk menampilkan visit_activity)
+    //public static function infolist(Infolist $infolist): Infolist
+        public static function infolist(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema
+        {
+            return $schema->components([
+            // 1. Bagian Header Detail Visit
+            //\Filament\Infolists\Components\Section::make(fn ($record) => "PIC: " . ($record->namapic ?? 'Tanpa Nama'))
+            //\Filament\Schemas\Components\Section::make(fn ($record) => "PIC: " . ($record->namapic ?? 'Tanpa Nama'))
+            Section::make(fn ($record) => "PIC: " . ($record->namapic ?? 'Tanpa Nama'))
+                ->description('Klik untuk detail lebih lanjut')
+                ->schema([
+                    \Filament\Schemas\Components\Grid::make(2)->schema([
+                        Placeholder::make('kodesales')
+                            ->content(fn ($r) => $r->kodesales ?? '-'),
+                        Placeholder::make('kodecust')
+                            ->content(fn ($r) => $r->kodecust ?? '-'),
+                        Placeholder::make('notes')
+                            ->content(fn ($r) => $r->notes ?? '-')
+                            ->columnSpanFull(),
+                    ]),
+                ])
+                ->collapsible()
+                ->collapsed(),
+    
+            // 2. Tombol Tambah Aktivitas
+            //InfolistActions::make([
+            //InfolistActions::make('add_activity')
+            // Tombol Tambah
+                \Filament\Schemas\Components\Actions::make([
+                    \Filament\Actions\Action::make('add_activity')
+                        ->label('Tambah Aktivitas Baru')
+                        ->icon('heroicon-m-plus-circle')
+                        ->color('primary')
+                        ->button()
+                        ->slideOver()
+                        ->form(static::getVisitActivityForm())
+                        ->action(function ($record, array $data, $livewire) {
+                            $record->activities()->create($data);
+                            \Filament\Notifications\Notification::make()->title('Sukses')->success()->send();
+                            $livewire->js('window.location.reload()');
+                        }),
+                ]),
+    
+            // 3. DAFTAR AKTIVITAS (Supaya bisa di-KLIK untuk EDIT)
+            //\Filament\Infolists\Components\RepeatableEntry::make('activities')
+            RepeatableEntry::make('activities')
+            ->label('Daftar Aktivitas')
+            ->schema([
+                TextEntry::make('jenis')->badge()->color('info'),
+                TextEntry::make('status')
+                    ->badge()
+                    ->color(fn ($state) => match ($state) {
+                        'Deal' => 'success',
+                        'Failed' => 'danger',
+                        default => 'warning',
+                    }),
+                
+                // --- INI CARA BARU DI v4 AGAR MUNCUL TOMBOL DI TIAP BARIS ---
+                    \Filament\Schemas\Components\Actions::make([
+                        \Filament\Actions\Action::make('edit_activity')
+                            ->label('Edit')
+                        ->icon('heroicon-m-pencil-square')
+                        ->color('warning')
+                        ->slideOver()
+                        ->form(static::getVisitActivityForm())
+                        ->fillForm(fn ($record) => $record->toArray())
+                        ->action(function ($record, array $data, $livewire) {
+                            $record->update($data);
+                            \Filament\Notifications\Notification::make()->title('Updated')->success()->send();
+                            $livewire->js('window.location.reload()');
+                        }),
+                ])->alignRight(),
+            ])
+            ->grid(['default' => 1, 'md' => 2])
+                ->itemActions([
+                    // INI AKSI EDITNYA
+                    Action::make('edit_activity')
+                        ->label('Edit')
+                        ->icon('heroicon-m-pencil-square')
+                        ->color('warning')
+                        ->slideOver()
+                        ->form(static::getVisitActivityForm()) // Pakai form yang sama
+                        ->fillForm(fn ($record) => $record->toArray()) // Isi data lama
+                        ->action(function ($record, array $data, $livewire) {
+                            $record->update($data);
+                            \Filament\Notifications\Notification::make()->title('Data Diupdate')->success()->send();
+                            $livewire->js('window.location.reload()');
+                        }),
+                    
+                    // Tambahan Aksi Hapus kalau perlu
+                    Action::make('delete_activity')
+                        ->label('Hapus')
+                        ->icon('heroicon-m-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->action(function ($record, $livewire) {
+                            $record->delete();
+                            $livewire->js('window.location.reload()');
+                        }),
+                ]),
+        ]);
+    }
+    
+    /**
+     * Fungsi Helper agar kodingan Form tidak double (DRY - Don't Repeat Yourself)
+     */
+    public static function getVisitActivityForm(): array
+    {
+        return [
+            \Filament\Forms\Components\Select::make('jenis')
+                ->options(config('plenum.jenis_visit'))
+                ->required()
+                ->live(),
+    
+            \Filament\Forms\Components\Select::make('kode_barang')
+                ->label('Cari Barang / Stock Item')
+                ->required()
+                ->searchable()
+                ->getSearchResultsUsing(fn (string $search): array => 
+                    \App\Models\Item::where('description', 'like', "%{$search}%")
+                        ->orWhere('inventoryid', 'like', "%{$search}%")
+                        ->limit(10)
+                        ->get()
+                        ->mapWithKeys(fn ($item) => [
+                            $item->inventoryid => "{$item->inventoryid} - {$item->description}"
+                        ])
+                        ->toArray()
+                )
+                ->getOptionLabelUsing(fn ($value) => (string) $value)
+                ->reactive()
+                ->afterStateUpdated(function ($state, $set) {
+                    $item = \App\Models\Item::where('inventoryid', $state)->first();
+                    if ($item) {
+                        $set('nama_barang', $item->description);
+                        $set('kelompok_barang', $item->kelompok);
+                    }
+                })
+                ->live()
+                ->hidden(fn (\Filament\Forms\Get $get) => $get('jenis') === 'Regular Visit'),
+    
+            TextInput::make('nama_barang')
+                ->label('Nama Barang')
+                ->dehydrated() 
+                ->readOnly()
+                ->hidden(fn (\Filament\Forms\Get $get) => $get('jenis') === 'Regular Visit'),
+    
+            \Filament\Forms\Components\Select::make('kelompok_barang')
+                ->label('Kelompok')
+                ->options(fn () => \App\Models\Item::query()->distinct()->whereNotNull('kelompok')->pluck('kelompok', 'kelompok'))
+                ->searchable()
+                ->disabled(fn (\Filament\Forms\Get $get) => filled($get('kode_barang')))
+                ->dehydrated()
+                ->hidden(fn (\Filament\Forms\Get $get) => $get('jenis') === 'Regular Visit'),
+    
+            \Filament\Forms\Components\Select::make('status')
+                ->options(config('plenum.status_visit'))
+                ->required()
+                ->hidden(fn (\Filament\Forms\Get $get) => $get('jenis') === 'Regular Visit'),
+    
+            \Filament\Forms\Components\Select::make('potential')
+                ->options(config('plenum.potential_visit'))
+                ->hidden(fn (\Filament\Forms\Get $get) => $get('jenis') === 'Regular Visit'),
+    
+            \Filament\Forms\Components\Select::make('sample')
+                ->options(config('plenum.sample_visit'))
+                ->hidden(fn (\Filament\Forms\Get $get) => $get('jenis') === 'Regular Visit'),
+    
+            Textarea::make('result')
+                ->label('Hasil/Catatan')
+                ->required(),
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListVisits::route('/'),
+            'create' => Pages\CreateVisit::route('/create'),
+            'view' => Pages\ViewVisit::route('/{record}'),
+            'edit' => Pages\EditVisit::route('/{record}/edit'),
+        ];
+    }
+
+    public static function getRelations(): array
+    {
+        return [RelationManagers\ActivitiesRelationManager::class];
+    }
+}
